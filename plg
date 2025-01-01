@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+set -e
+
+die() { printf "$1\n" >&2 && exit 1; }
+info() { printf "\033[32m*\033[0m $1\n" >&2; }
+header() { printf "\033[33m>> $1\033[0m\n" >&2; }
+usage() {
+    cat << EOF >&2
+Usage: plg [OPTIONS] <COMMAND>
+
+COMMANDS:
+  sy(nc)               Sync and patch all plugins
+  st(atus)             Show status
+  c(lean)              Delete stray pacakges
+  p(atch)              Apply each <name>.patch from PLG_PATCHDIR onto <name>
+                       in PLG_PREFIX
+  u(npatch)            Unpatch all plugins
+
+OPTIONS:
+  -j                   Job count for syncing [default: $PLG_JOBS]
+
+ENVIRONMENT:
+  PLG_PLUGINS          Path to configuration file, should export PKGS=() and
+                       optionally PATCHES=()
+  PLG_PREFIX           Path to clone repositories into, needs to be on runtimepath
+  PLG_PATCHDIR         Path to patches
+
+EOF
+    exit 1
+}
+
+_unpatch() {
+    local repo="$PLG_PREFIX/$(basename "$1")"
+    if [ ! -d "$repo" ]; then
+        return
+    fi
+    header "$1"
+    git -C $repo checkout .
+    git -C $repo clean \
+        --exclude=parser \
+        --exclude=parser-info \
+        --exclude=tags \
+        --exclude=.luarc.json \
+        -fdx
+}
+
+_sync_repo() {
+    local remotepath="$1"
+
+    if [[ "$remotepath" == *://* ]]; then
+        local url="$remotepath"
+    else
+        local url="https://github.com/$remotepath"
+    fi
+
+    mkdir -p "$PLG_PREFIX"
+    local outdir="$PLG_PREFIX/$(basename $remotepath)"
+
+    if [ -d "$outdir" ]; then
+        git -C $outdir pull
+    else
+        git -c advice.detachedHead=false clone \
+            --depth $PLG_CLONE_DEPTH ${@:2} "$url" "$outdir"
+    fi
+}
+
+plg_sync() {
+    local i=0
+    for pkg in ${PKGS[@]}; do
+       header "$pkg"
+       _sync_repo $pkg &
+
+       # Clone PLG_JOBS repos at a time
+       if [ $((i % PLG_JOBS)) = $((PLG_JOBS - 1)) ]; then
+           wait
+       fi
+       i=$((i + 1))
+    done
+
+    wait
+
+    plg_patch
+}
+
+plg_unpatch() {
+    for pkg in ${PKGS[@]}; do
+        _unpatch $pkg
+    done
+}
+
+plg_patch() {
+    [ -z "${PATCHES[*]}" ] && return
+
+    for p in ${PATCHES[@]}; do
+        git -C $PLG_PREFIX/$p apply "$PLG_PATCHDIR/$(basename "$p").patch"
+    done
+    info "Patches applied"
+}
+
+plg_status() {
+    for pkg in ${PKGS[@]}; do
+        local repo="$PLG_PREFIX/$(basename "$pkg")"
+        if [ -z "$repo" ]; then
+            echo "Not found: $pkg" >&2
+            continue
+        fi
+
+        # * Try tag name
+        local refname=$(git -C $repo tag --points-at HEAD 2> /dev/null | head -n1)
+        # * Try branch name
+        [ -z "$refname" ] &&
+            local refname=$(git -C $repo symbolic-ref --short HEAD 2> /dev/null)
+        [ -n "$refname" ] && refname="[$refname]"
+        header "$pkg $refname"
+
+        git -c color.status=always -C "$repo" status -s
+    done
+}
+
+plg_clean() {
+    local cleaned=false
+    for d in "$PLG_PREFIX"/start/*; do
+        local name=$(basename $d)
+        if ! grep -qE "/${name}\s+" <<< "${PKGS[*]} "; then
+            info "Removing stray package: $name"
+            rm -rf ${d}
+            cleaned=true
+        fi
+    done
+    $cleaned || info "No stray packages"
+}
+
+################################################################################
+
+# Exports PKGS and PATCHES
+PLG_PLUGINS=${PLG_PLUGINS:-$HOME/.config/nvim/plugins.sh}
+PLG_PATCHDIR="${PLG_PATCHDIR:-$HOME/.config/nvim/patches}"
+# Skip support for .../opt/
+PLG_PREFIX=${PLG_PREFIX:-"$HOME/.local/share/nvim/site/pack/plg/start"}
+PLG_CLONE_DEPTH=${PLG_CLONE_DEPTH:-1}
+PLG_JOBS=8
+
+# shellcheck disable=SC1090
+source "$PLG_PLUGINS"
+
+while getopts ":hj:" opt; do
+    case $opt in
+    j) PLG_JOBS=$OPTARG ;;
+    *) usage ;;
+    esac
+done
+
+shift $((OPTIND - 1))
+
+case "$1" in
+sy*)
+    plg_unpatch
+    plg_sync
+;;
+st*) plg_status ;;
+p*) plg_patch ;;
+u*) plg_unpatch ;;
+c*) plg_clean ;;
+*) usage ;;
+esac
