@@ -2,9 +2,9 @@
 Simple CLI Neovim plugin manager. This program is basically a thin wrapper
 around `git clone`, nothing special. To manage plugins with `plg`:
 
-1. Create a configuaration at `~/.config/nvim/plugins.sh`, example:
+1. Create a configuration at `~/.config/nvim/plugins.sh`, example:
 ```bash
-# List of packages to clone (from github.com)
+# List of packages to clone (from github.com if unspecified)
 export PKGS=(
     "tpope/vim-fugitive"
     "junegunn/fzf"

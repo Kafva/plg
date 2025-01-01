@@ -36,10 +36,11 @@ _unpatch() {
     fi
     header "$1"
     git -C $repo checkout .
+    # Skip parser*/ directories for nvim-treesitter
     git -C $repo clean \
         --exclude=parser \
         --exclude=parser-info \
-        --exclude=tags \
+        --exclude=.tags \
         --exclude=.luarc.json \
         -fdx
 }
