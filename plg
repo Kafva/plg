@@ -120,7 +120,7 @@ plg_status() {
 
 plg_clean() {
     local cleaned=false
-    for d in "$PLG_PREFIX"/start/*; do
+    for d in "$PLG_PREFIX"/*; do
         local name=$(basename $d)
         if ! grep -qE "/${name}\s+" <<< "${PKGS[*]} "; then
             info "Removing stray package: $name"
