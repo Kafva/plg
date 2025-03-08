@@ -4,8 +4,17 @@ set -e
 ESC=$(printf '\033')
 
 die() { printf "$1\n" >&2 && exit 1; }
-info() { printf "\033[32m*\033[0m $1\n" >&2; }
-header() { printf "\033[33m>> $1\033[0m\n" >&2; }
+hdr() {
+    if $SINGLE_LINE; then
+        # Clear line and overwrite
+        printf "\r%*s" "$(tput cols)" "" >&2
+        printf "\r\033[33m▸\033[0m $*" >&2
+    else
+        printf "\033[33m▸\033[0m $*\n" >&2
+    fi
+}
+hide_cursor() { printf '\033[?25l'; }
+show_cursor() { printf '\x1b[?25h'; }
 usage() {
     cat << EOF >&2
 Usage: plg [OPTIONS] <COMMAND>
@@ -19,6 +28,7 @@ ${ESC}[93mCOMMANDS:${ESC}[0m
 
 ${ESC}[93mOPTIONS:${ESC}[0m
     ${ESC}[92m-j${ESC}[0m          Job count for syncing [default: $PLG_JOBS]
+    ${ESC}[92m-m${ESC}[0m          Print output on multiple lines
 
 ${ESC}[93mENVIRONMENT:${ESC}[0m
   ${ESC}[92mPLG_PLUGINS${ESC}[0m          Path to configuration file, should export PKGS=() and optionally PATCHES=()
@@ -34,15 +44,18 @@ _unpatch() {
     if [ ! -d "$repo" ]; then
         return
     fi
-    header "$1"
-    git -C $repo checkout .
+    local output=$(git -C $repo checkout . 2>&1)
     # Skip parser*/ directories for nvim-treesitter
     git -C $repo clean \
         --exclude=parser \
         --exclude=parser-info \
         --exclude=.tags \
         --exclude=.luarc.json \
-        -fdx
+        -fdx > /dev/null
+
+    if [ "$output" != "Updated 0 paths from the index" ]; then
+        hdr "$1 \033[32m$output\033[0m"
+    fi
 }
 
 _sync_repo() {
@@ -58,24 +71,29 @@ _sync_repo() {
     local outdir="$PLG_PREFIX/$(basename $remotepath)"
 
     if [ -d "$outdir" ]; then
-        git -C $outdir pull
+        local output=$(git -C $outdir pull)
+        if [ "$output" = "Already up to date." ]; then
+            hdr "$remotepath \033[32mAlready up to date\033[0m"
+        else
+            hdr "$remotepath \033[32m$(grep 'Updating.*' <<< "$output")\033[0m"
+        fi
     else
-        git -c advice.detachedHead=false clone \
-            --depth $PLG_CLONE_DEPTH ${@:2} "$url" "$outdir"
+        local output=$(git -c advice.detachedHead=false clone \
+            --depth $PLG_CLONE_DEPTH ${@:2} "$url" "$outdir" 2>&1)
+        hdr "$remotepath \033[32m$(grep 'Resolving deltas.*' <<< "$output")\033[0m"
     fi
 }
 
 plg_sync() {
     local i=0
     for pkg in ${PKGS[@]}; do
-       header "$pkg"
-       _sync_repo $pkg &
+        _sync_repo $pkg &
 
-       # Clone PLG_JOBS repos at a time
-       if [ $((i % PLG_JOBS)) = $((PLG_JOBS - 1)) ]; then
-           wait
-       fi
-       i=$((i + 1))
+        # Clone PLG_JOBS repos at a time
+        if [ $((i % PLG_JOBS)) = $((PLG_JOBS - 1)) ]; then
+            wait
+        fi
+        i=$((i + 1))
     done
 
     wait
@@ -95,7 +113,6 @@ plg_patch() {
     for p in ${PATCHES[@]}; do
         git -C $PLG_PREFIX/$p apply "$PLG_PATCHDIR/$(basename "$p").patch"
     done
-    info "Patches applied"
 }
 
 plg_status() {
@@ -112,7 +129,7 @@ plg_status() {
         [ -z "$refname" ] &&
             local refname=$(git -C $repo symbolic-ref --short HEAD 2> /dev/null)
         [ -n "$refname" ] && refname="[$refname]"
-        header "$pkg $refname"
+        printf "\033[33m▸\033[0m $pkg \033[32m$refname\033[0m\n" >&2
 
         git -c color.status=always -C "$repo" status -s
     done
@@ -123,12 +140,12 @@ plg_clean() {
     for d in "$PLG_PREFIX"/*; do
         local name=$(basename $d)
         if ! grep -qE "/${name}\s+" <<< "${PKGS[*]} "; then
-            info "Removing stray package: $name"
+            echo "Removing stray package: $name"
             rm -rf ${d}
             cleaned=true
         fi
     done
-    $cleaned || info "No stray packages"
+    $cleaned || echo "No stray packages"
 }
 
 ################################################################################
@@ -140,13 +157,17 @@ PLG_PATCHDIR="${PLG_PATCHDIR:-$HOME/.config/nvim/patches}"
 PLG_PREFIX=${PLG_PREFIX:-"$HOME/.local/share/nvim/site/pack/plg/start"}
 PLG_CLONE_DEPTH=${PLG_CLONE_DEPTH:-1}
 PLG_JOBS=8
+SINGLE_LINE=true
 
 # shellcheck disable=SC1090
 source "$PLG_PLUGINS"
 
-while getopts ":hj:" opt; do
+trap show_cursor EXIT
+
+while getopts ":hj:m" opt; do
     case $opt in
     j) PLG_JOBS=$OPTARG ;;
+    m) SINGLE_LINE=false ;;
     *) usage ;;
     esac
 done
@@ -155,12 +176,18 @@ shift $((OPTIND - 1))
 
 case "$1" in
 sy*)
+    hide_cursor
     plg_unpatch
     plg_sync
+    $SINGLE_LINE && echo
+;;
+u*)
+    hide_cursor
+    plg_unpatch
+    $SINGLE_LINE && echo
 ;;
 st*) plg_status ;;
 p*) plg_patch ;;
-u*) plg_unpatch ;;
 c*) plg_clean ;;
 *) usage ;;
 esac
