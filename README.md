@@ -7,8 +7,7 @@ around `git clone`, nothing special. To manage plugins with `plg`:
 # List of packages to clone (from github.com if unspecified)
 export PKGS=(
     "tpope/vim-fugitive"
-    "junegunn/fzf"
-    "junegunn/fzf.vim"
+    "ibhagwan/fzf-lua"
     "neovim/nvim-lspconfig"
     "hrsh7th/nvim-cmp"
     "hrsh7th/cmp-buffer"
