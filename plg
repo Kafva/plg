@@ -8,9 +8,9 @@ hdr() {
     if $SINGLE_LINE; then
         # Clear line and overwrite
         printf "\r%*s" "$(tput cols)" "" >&2
-        printf "\r\033[33m▸\033[0m $*" >&2
+        printf "\r$*" >&2
     else
-        printf "\033[33m▸\033[0m $*\n" >&2
+        printf "$*\n" >&2
     fi
 }
 hide_cursor() { printf '\033[?25l'; }
@@ -54,7 +54,7 @@ _unpatch() {
         -fdx > /dev/null
 
     if [ "$output" != "Updated 0 paths from the index" ]; then
-        hdr "$1 \033[32m$output\033[0m"
+        hdr "$1: \033[32m$output\033[0m"
     fi
 }
 
@@ -73,14 +73,14 @@ _sync_repo() {
     if [ -d "$outdir" ]; then
         local output=$(git -C $outdir pull)
         if [ "$output" = "Already up to date." ]; then
-            hdr "$remotepath \033[32mAlready up to date\033[0m"
+            hdr "$remotepath: \033[32mAlready up to date\033[0m"
         else
-            hdr "$remotepath \033[32m$(grep 'Updating.*' <<< "$output")\033[0m"
+            hdr "$remotepath: \033[32m$(grep 'Updating.*' <<< "$output")\033[0m"
         fi
     else
         local output=$(git -c advice.detachedHead=false clone \
             --depth $PLG_CLONE_DEPTH ${@:2} "$url" "$outdir" 2>&1)
-        hdr "$remotepath \033[32m$(grep 'Resolving deltas.*' <<< "$output")\033[0m"
+        hdr "$remotepath: \033[32m$(grep 'Resolving deltas.*' <<< "$output")\033[0m"
     fi
 }
 
@@ -129,7 +129,7 @@ plg_status() {
         [ -z "$refname" ] &&
             local refname=$(git -C $repo symbolic-ref --short HEAD 2> /dev/null)
         [ -n "$refname" ] && refname="[$refname]"
-        printf "\033[33m▸\033[0m $pkg \033[32m$refname\033[0m\n" >&2
+        printf "$pkg \033[32m$refname\033[0m\n" >&2
 
         git -c color.status=always -C "$repo" status -s
     done
