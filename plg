@@ -51,7 +51,7 @@ _unpatch() {
         --exclude=parser-info \
         --exclude=.tags \
         --exclude=.luarc.json \
-        -fdx > /dev/null
+        -fdx &> /dev/null
 
     if [ "$output" != "Updated 0 paths from the index" ]; then
         hdr "$1: \033[32m$output\033[0m"
@@ -71,7 +71,7 @@ _sync_repo() {
     local outdir="$PLG_PREFIX/$(basename $remotepath)"
 
     if [ -d "$outdir" ]; then
-        local output=$(git -C $outdir pull)
+        local output=$(git -C $outdir pull 2>&1)
         if [ "$output" = "Already up to date." ]; then
             hdr "$remotepath: \033[32mAlready up to date\033[0m"
         else
