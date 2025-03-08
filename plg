@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
+ESC=$(printf '\033')
+
 die() { printf "$1\n" >&2 && exit 1; }
 info() { printf "\033[32m*\033[0m $1\n" >&2; }
 header() { printf "\033[33m>> $1\033[0m\n" >&2; }
@@ -8,22 +10,20 @@ usage() {
     cat << EOF >&2
 Usage: plg [OPTIONS] <COMMAND>
 
-COMMANDS:
-  sy(nc)               Sync and patch all plugins
-  st(atus)             Show status
-  c(lean)              Delete stray pacakges
-  p(atch)              Apply each <name>.patch from PLG_PATCHDIR onto <name>
-                       in PLG_PREFIX
-  u(npatch)            Unpatch all plugins
+${ESC}[93mCOMMANDS:${ESC}[0m
+  ${ESC}[92msy(nc)${ESC}[0m        Sync and patch all plugins
+  ${ESC}[92mst(atus)${ESC}[0m      Show status
+  ${ESC}[92mc(lean)${ESC}[0m       Delete stray pacakges
+  ${ESC}[92mp(atch)${ESC}[0m       Apply patches onto all plugins
+  ${ESC}[92mu(npatch)${ESC}[0m     Unpatch all plugins
 
-OPTIONS:
-  -j                   Job count for syncing [default: $PLG_JOBS]
+${ESC}[93mOPTIONS:${ESC}[0m
+    ${ESC}[92m-j${ESC}[0m          Job count for syncing [default: $PLG_JOBS]
 
-ENVIRONMENT:
-  PLG_PLUGINS          Path to configuration file, should export PKGS=() and
-                       optionally PATCHES=()
-  PLG_PREFIX           Path to clone repositories into, needs to be on runtimepath
-  PLG_PATCHDIR         Path to patches
+${ESC}[93mENVIRONMENT:${ESC}[0m
+  ${ESC}[92mPLG_PLUGINS${ESC}[0m          Path to configuration file, should export PKGS=() and optionally PATCHES=()
+  ${ESC}[92mPLG_PREFIX${ESC}[0m           Path to clone repositories into, needs to be on runtimepath
+  ${ESC}[92mPLG_PATCHDIR${ESC}[0m         Path to patches
 
 EOF
     exit 1
