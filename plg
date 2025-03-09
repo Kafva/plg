@@ -28,7 +28,7 @@ ${ESC}[93mCOMMANDS:${ESC}[0m
 
 ${ESC}[93mOPTIONS:${ESC}[0m
     ${ESC}[92m-j${ESC}[0m          Job count for syncing [default: $PLG_JOBS]
-    ${ESC}[92m-m${ESC}[0m          Print output on multiple lines
+    ${ESC}[92m-s${ESC}[0m          Print output on single line
 
 ${ESC}[93mENVIRONMENT:${ESC}[0m
   ${ESC}[92mPLG_PLUGINS${ESC}[0m          Path to configuration file, should export PKGS=() and optionally PATCHES=()
@@ -157,17 +157,17 @@ PLG_PATCHDIR="${PLG_PATCHDIR:-$HOME/.config/nvim/patches}"
 PLG_PREFIX=${PLG_PREFIX:-"$HOME/.local/share/nvim/site/pack/plg/start"}
 PLG_CLONE_DEPTH=${PLG_CLONE_DEPTH:-1}
 PLG_JOBS=8
-SINGLE_LINE=true
+SINGLE_LINE=false
 
 # shellcheck disable=SC1090
 source "$PLG_PLUGINS"
 
 trap show_cursor EXIT
 
-while getopts ":hj:m" opt; do
+while getopts ":hj:s" opt; do
     case $opt in
     j) PLG_JOBS=$OPTARG ;;
-    m) SINGLE_LINE=false ;;
+    s) SINGLE_LINE=true ;;
     *) usage ;;
     esac
 done
