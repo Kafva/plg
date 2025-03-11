@@ -71,8 +71,12 @@ _sync_repo() {
     local outdir="$PLG_PREFIX/$(basename $remotepath)"
 
     if [ -d "$outdir" ]; then
-        local output=$(git -C $outdir pull 2>&1)
-        if [ "$output" = "Already up to date." ]; then
+        local output=$(if ! git -C $outdir pull 2>&1; then printf "ERROR"; fi)
+
+        if grep -q "ERROR" <<< "$output"; then
+            local errmsg=$(grep -v "^ERROR$" <<< "$output")
+            hdr "$remotepath: \033[91mPull failed\033[0m\n$errmsg"
+        elif [ "$output" = "Already up to date." ]; then
             hdr "$remotepath: \033[32mAlready up to date\033[0m"
         else
             hdr "$remotepath: \033[32m$(grep 'Updating.*' <<< "$output")\033[0m"
@@ -111,7 +115,10 @@ plg_patch() {
     [ -z "${PATCHES[*]}" ] && return
 
     for p in ${PATCHES[@]}; do
-        git -C $PLG_PREFIX/$p apply "$PLG_PATCHDIR/$(basename "$p").patch"
+        if ! git -C $PLG_PREFIX/$p apply "$PLG_PATCHDIR/$(basename "$p").patch"; then
+            hdr "$p: \033[91mPatch failed\033[0m"
+            exit 1
+        fi
     done
 }
 
