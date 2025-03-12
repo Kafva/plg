@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
-ESC=$(printf '\033')
 
-die() { printf "$1\n" >&2 && exit 1; }
+die() {
+    printf "$1\n" >&2
+    show_cursor
+    exit 1
+}
+
 hdr() {
     if $SINGLE_LINE; then
         # Clear line and overwrite
@@ -13,52 +17,84 @@ hdr() {
         printf "$*\n" >&2
     fi
 }
+
+gitcmd() {
+    local repopath="$1"
+    local subcmd="$2"
+    local output=
+    local r=
+
+    set +e
+    if [ "$subcmd" == clone ]; then
+        output=$(GIT_TERMINAL_PROMPT=0 git $subcmd ${@:3} "$repopath" 2>&1)
+        r=$?
+    else
+        output=$(git -C "$repopath" $subcmd ${@:3} 2>&1)
+        r=$?
+    fi
+    set -e
+
+    # shellcheck disable=SC2181
+    if [ $r != 0 ]; then
+        hdr "${repopath##"$PLG_PREFIX/"}: \033[91m${subcmd^} failed\033[0m"
+        printf "$output\n"
+        exit $r
+    else
+        printf "$output"
+    fi
+}
+
 hide_cursor() { printf '\033[?25l'; }
+
 show_cursor() { printf '\x1b[?25h'; }
+
 usage() {
+    local esc=$(printf '\033')
     cat << EOF >&2
 Usage: plg [OPTIONS] <COMMAND>
 
-${ESC}[93mCOMMANDS:${ESC}[0m
-  ${ESC}[92msy(nc)${ESC}[0m        Sync and patch all plugins
-  ${ESC}[92mst(atus)${ESC}[0m      Show status
-  ${ESC}[92mc(lean)${ESC}[0m       Delete stray pacakges
-  ${ESC}[92mp(atch)${ESC}[0m       Apply patches onto all plugins
-  ${ESC}[92mu(npatch)${ESC}[0m     Unpatch all plugins
+${esc}[93mCOMMANDS:${esc}[0m
+  ${esc}[92msy(nc)${esc}[0m        Sync and patch all plugins
+  ${esc}[92mst(atus)${esc}[0m      Show status
+  ${esc}[92mc(lean)${esc}[0m       Delete stray pacakges
+  ${esc}[92mp(atch)${esc}[0m       Apply patches onto all plugins
+  ${esc}[92mu(npatch)${esc}[0m     Unpatch all plugins
 
-${ESC}[93mOPTIONS:${ESC}[0m
-    ${ESC}[92m-j${ESC}[0m          Job count for syncing [default: $PLG_JOBS]
-    ${ESC}[92m-s${ESC}[0m          Print output on single line
+${esc}[93mOPTIONS:${esc}[0m
+    ${esc}[92m-j${esc}[0m          Job count for syncing [default: $PLG_JOBS]
+    ${esc}[92m-s${esc}[0m          Print output on single line
 
-${ESC}[93mENVIRONMENT:${ESC}[0m
-  ${ESC}[92mPLG_PLUGINS${ESC}[0m          Path to configuration file, should export PKGS=() and optionally PATCHES=()
-  ${ESC}[92mPLG_PREFIX${ESC}[0m           Path to clone repositories into, needs to be on runtimepath
-  ${ESC}[92mPLG_PATCHDIR${ESC}[0m         Path to patches
+${esc}[93mENVIRONMENT:${esc}[0m
+  ${esc}[92mPLG_PLUGINS${esc}[0m          Path to configuration file, should export PKGS=() and optionally PATCHES=()
+  ${esc}[92mPLG_PREFIX${esc}[0m           Path to clone repositories into, needs to be on runtimepath
+  ${esc}[92mPLG_PATCHDIR${esc}[0m         Path to patches
 
 EOF
     exit 1
 }
 
-_unpatch() {
-    local repo="$PLG_PREFIX/$(basename "$1")"
+job_unpatch() {
+    local name="$1"
+    local repo="$PLG_PREFIX/$(basename $name)"
     if [ ! -d "$repo" ]; then
         return
     fi
-    local output=$(git -C $repo checkout . 2>&1)
+
+    local output=$(gitcmd $repo checkout .)
+    if [ "$output" != "Updated 0 paths from the index" ]; then
+        hdr "$name: \033[92m$output\033[0m"
+    fi
+
     # Skip parser*/ directories for nvim-treesitter
-    git -C $repo clean \
+    gitcmd $repo clean \
         --exclude=parser \
         --exclude=parser-info \
         --exclude=.tags \
         --exclude=.luarc.json \
-        -fdx &> /dev/null
-
-    if [ "$output" != "Updated 0 paths from the index" ]; then
-        hdr "$1: \033[32m$output\033[0m"
-    fi
+        -fdx
 }
 
-_sync_repo() {
+job_sync_repo() {
     local remotepath="$1"
 
     if [[ "$remotepath" == *://* ]]; then
@@ -71,27 +107,19 @@ _sync_repo() {
     local outdir="$PLG_PREFIX/$(basename $remotepath)"
 
     if [ -d "$outdir" ]; then
-        local output=$(if ! git -C $outdir pull 2>&1; then printf "ERROR"; fi)
-
-        if grep -q "ERROR" <<< "$output"; then
-            local errmsg=$(grep -v "^ERROR$" <<< "$output")
-            hdr "$remotepath: \033[91mPull failed\033[0m\n$errmsg"
-        elif [ "$output" = "Already up to date." ]; then
-            hdr "$remotepath: \033[32mAlready up to date\033[0m"
-        else
-            hdr "$remotepath: \033[32m$(grep 'Updating.*' <<< "$output")\033[0m"
-        fi
+        local output=$(gitcmd $outdir pull)
+        hdr "$remotepath: \033[92m$(sed -n '1p' <<< "$output")\033[0m"
     else
-        local output=$(git -c advice.detachedHead=false clone \
-            --depth $PLG_CLONE_DEPTH ${@:2} "$url" "$outdir" 2>&1)
-        hdr "$remotepath: \033[32m$(grep 'Resolving deltas.*' <<< "$output")\033[0m"
+        gitcmd $outdir clone -c advice.detachedHead=false --depth $PLG_CLONE_DEPTH "$url"
+        local git_ref=$(gitcmd $outdir rev-parse --short HEAD)
+        hdr "$remotepath: \033[92mCloned $git_ref\033[0m"
     fi
 }
 
 plg_sync() {
     local i=0
     for pkg in ${PKGS[@]}; do
-        _sync_repo $pkg &
+        job_sync_repo $pkg &
 
         # Clone PLG_JOBS repos at a time
         if [ $((i % PLG_JOBS)) = $((PLG_JOBS - 1)) ]; then
@@ -107,7 +135,7 @@ plg_sync() {
 
 plg_unpatch() {
     for pkg in ${PKGS[@]}; do
-        _unpatch $pkg
+        job_unpatch $pkg
     done
 }
 
@@ -115,10 +143,9 @@ plg_patch() {
     [ -z "${PATCHES[*]}" ] && return
 
     for p in ${PATCHES[@]}; do
-        if ! git -C $PLG_PREFIX/$p apply "$PLG_PATCHDIR/$(basename "$p").patch"; then
-            hdr "$p: \033[91mPatch failed\033[0m"
-            exit 1
-        fi
+        gitcmd $PLG_PREFIX/$p apply "$PLG_PATCHDIR/$(basename "$p").patch"
+        local remotepath="$(tr ' ' '\n' <<< "${PKGS[*]}" | grep "$p$")"
+        hdr "$remotepath: \033[92mPatched successfully\033[0m"
     done
 }
 
@@ -136,7 +163,7 @@ plg_status() {
         [ -z "$refname" ] &&
             local refname=$(git -C $repo symbolic-ref --short HEAD 2> /dev/null)
         [ -n "$refname" ] && refname="[$refname]"
-        printf "$pkg \033[32m$refname\033[0m\n" >&2
+        printf "$pkg \033[92m$refname\033[0m\n" >&2
 
         git -c color.status=always -C "$repo" status -s
     done
@@ -169,7 +196,7 @@ SINGLE_LINE=false
 # shellcheck disable=SC1090
 source "$PLG_PLUGINS"
 
-trap show_cursor EXIT
+trap show_cursor INT
 
 while getopts ":hj:s" opt; do
     case $opt in
@@ -181,17 +208,21 @@ done
 
 shift $((OPTIND - 1))
 
+mkdir -p $PLG_PREFIX
+
 case "$1" in
 sy*)
     hide_cursor
     plg_unpatch
     plg_sync
     $SINGLE_LINE && echo
+    show_cursor
 ;;
 u*)
     hide_cursor
     plg_unpatch
     $SINGLE_LINE && echo
+    show_cursor
 ;;
 st*) plg_status ;;
 p*) plg_patch ;;
