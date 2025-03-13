@@ -144,7 +144,7 @@ plg_sync() {
         i=$((i + 1))
     done
 
-    wait
+    wait ${pids[@]}
 
     plg_patch
 }
