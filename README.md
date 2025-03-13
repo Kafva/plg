@@ -1,6 +1,5 @@
 # plg
-Simple CLI Neovim plugin manager. This program is basically a thin wrapper
-around `git clone`, nothing special. To manage plugins with `plg`:
+Simple CLI Neovim plugin manager.
 
 1. Create a configuration at `~/.config/nvim/plugins.sh`, example:
 ```bash
