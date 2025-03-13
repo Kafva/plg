@@ -37,10 +37,12 @@ gitcmd() {
     # shellcheck disable=SC2181
     if [ $r != 0 ]; then
         hdr "${repopath##"$PLG_PREFIX/"}: \033[91m${subcmd^} failed\033[0m"
-        printf "$output\n"
+        $SINGLE_LINE && echo
+        echo "$output"
+        show_cursor
         exit $r
     else
-        printf "$output"
+        echo -n "$output"
     fi
 }
 
@@ -49,25 +51,27 @@ hide_cursor() { printf '\033[?25l'; }
 show_cursor() { printf '\x1b[?25h'; }
 
 usage() {
-    local esc=$(printf '\033')
+    local yellow=$(printf "\033[${Y}m")
+    local green=$(printf "\033[${G}m")
+    local reset=$(printf "\033[0m")
     cat << EOF >&2
 Usage: plg [OPTIONS] <COMMAND>
 
-${esc}[93mCOMMANDS:${esc}[0m
-  ${esc}[92msy(nc)${esc}[0m        Sync and patch all plugins
-  ${esc}[92mst(atus)${esc}[0m      Show status
-  ${esc}[92mc(lean)${esc}[0m       Delete stray pacakges
-  ${esc}[92mp(atch)${esc}[0m       Apply patches onto all plugins
-  ${esc}[92mu(npatch)${esc}[0m     Unpatch all plugins
+${yellow}COMMANDS:${reset}
+  ${green}sy(nc)${reset}        Sync and patch all plugins
+  ${green}st(atus)${reset}      Show status
+  ${green}c(lean)${reset}       Delete stray pacakges
+  ${green}p(atch)${reset}       Apply patches onto all plugins
+  ${green}u(npatch)${reset}     Unpatch all plugins
 
-${esc}[93mOPTIONS:${esc}[0m
-    ${esc}[92m-j${esc}[0m          Job count for syncing [default: $PLG_JOBS]
-    ${esc}[92m-s${esc}[0m          Print output on single line
+${yellow}OPTIONS:${reset}
+    ${green}-j${reset}          Job count for syncing [default: $PLG_JOBS]
+    ${green}-s${reset}          Print output on single line
 
-${esc}[93mENVIRONMENT:${esc}[0m
-  ${esc}[92mPLG_PLUGINS${esc}[0m          Path to configuration file, should export PKGS=() and optionally PATCHES=()
-  ${esc}[92mPLG_PREFIX${esc}[0m           Path to clone repositories into, needs to be on runtimepath
-  ${esc}[92mPLG_PATCHDIR${esc}[0m         Path to patches
+${yellow}ENVIRONMENT:${reset}
+  ${green}PLG_PLUGINS${reset}          Path to configuration file, should export PKGS=() and optionally PATCHES=()
+  ${green}PLG_PREFIX${reset}           Path to clone repositories into, needs to be on runtimepath
+  ${green}PLG_PATCHDIR${reset}         Path to patches
 
 EOF
     exit 1
@@ -82,16 +86,20 @@ job_unpatch() {
 
     local output=$(gitcmd $repo checkout .)
     if [ "$output" != "Updated 0 paths from the index" ]; then
-        hdr "$name: \033[92m$output\033[0m"
+        hdr "$name: \033[${G}m$output\033[0m"
     fi
 
     # Skip parser*/ directories for nvim-treesitter
-    gitcmd $repo clean \
+    output=$(gitcmd $repo clean \
         --exclude=parser \
         --exclude=parser-info \
         --exclude=.tags \
         --exclude=.luarc.json \
-        -fdx
+        -fdx)
+
+    if [ -n "$output" ]; then
+        hdr "$name: \033[${G}m$output\033[0m"
+    fi
 }
 
 job_sync_repo() {
@@ -108,22 +116,30 @@ job_sync_repo() {
 
     if [ -d "$outdir" ]; then
         local output=$(gitcmd $outdir pull)
-        hdr "$remotepath: \033[92m$(sed -n '1p' <<< "$output")\033[0m"
+        # Print which commit we are updating to if applicable, otherwise
+        # use the first line from the output.
+        local outstr=$(grep -E '^Updating ' <<< "$output")
+        if [ -z "$outstr" ]; then
+            outstr=$(sed -n '1p' <<< "$output")
+        fi
+        hdr "$remotepath: \033[${G}m$outstr\033[0m"
     else
-        gitcmd $outdir clone -c advice.detachedHead=false --depth $PLG_CLONE_DEPTH "$url"
+        local _=$(gitcmd $outdir clone -c advice.detachedHead=false --depth $PLG_CLONE_DEPTH "$url")
         local git_ref=$(gitcmd $outdir rev-parse --short HEAD)
-        hdr "$remotepath: \033[92mCloned $git_ref\033[0m"
+        hdr "$remotepath: \033[${G}mCloned $git_ref\033[0m"
     fi
 }
 
 plg_sync() {
     local i=0
+    local pids=()
     for pkg in ${PKGS[@]}; do
         job_sync_repo $pkg &
+        pids+=($!)
 
         # Clone PLG_JOBS repos at a time
         if [ $((i % PLG_JOBS)) = $((PLG_JOBS - 1)) ]; then
-            wait
+            wait ${pids[@]}
         fi
         i=$((i + 1))
     done
@@ -145,7 +161,7 @@ plg_patch() {
     for p in ${PATCHES[@]}; do
         gitcmd $PLG_PREFIX/$p apply "$PLG_PATCHDIR/$(basename "$p").patch"
         local remotepath="$(tr ' ' '\n' <<< "${PKGS[*]}" | grep "$p$")"
-        hdr "$remotepath: \033[92mPatched successfully\033[0m"
+        hdr "$remotepath: \033[${G}mPatched successfully\033[0m"
     done
 }
 
@@ -163,7 +179,7 @@ plg_status() {
         [ -z "$refname" ] &&
             local refname=$(git -C $repo symbolic-ref --short HEAD 2> /dev/null)
         [ -n "$refname" ] && refname="[$refname]"
-        printf "$pkg \033[92m$refname\033[0m\n" >&2
+        printf "$pkg \033[${G}m$refname\033[0m\n" >&2
 
         git -c color.status=always -C "$repo" status -s
     done
@@ -192,6 +208,8 @@ PLG_PREFIX=${PLG_PREFIX:-"$HOME/.local/share/nvim/site/pack/plg/start"}
 PLG_CLONE_DEPTH=${PLG_CLONE_DEPTH:-1}
 PLG_JOBS=8
 SINGLE_LINE=false
+G=92
+Y=93
 
 # shellcheck disable=SC1090
 source "$PLG_PLUGINS"
