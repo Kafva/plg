@@ -92,6 +92,9 @@ job_unpatch() {
     # Skip parser*/ directories for nvim-treesitter
     output=$(gitcmd $repo clean \
         --exclude=parser \
+        --exclude=tsst.nvim \
+        --exclude=.testenv \
+        --exclude=debugger.lua \
         --exclude=parser-info \
         --exclude=.tags \
         --exclude=.luarc.json \
