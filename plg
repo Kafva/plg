@@ -51,27 +51,27 @@ hide_cursor() { printf '\033[?25l'; }
 show_cursor() { printf '\x1b[?25h'; }
 
 usage() {
-    local yellow=$(printf "\033[${Y}m")
-    local green=$(printf "\033[${G}m")
+    local ansi_h1=$(printf "\033[1;4m")
+    local ansi_h2=$(printf "\033[1m")
     local reset=$(printf "\033[0m")
     cat << EOF >&2
 Usage: plg [OPTIONS] <COMMAND>
 
-${yellow}COMMANDS:${reset}
-  ${green}sy(nc)${reset}        Sync and patch all plugins
-  ${green}st(atus)${reset}      Show status
-  ${green}c(lean)${reset}       Delete stray pacakges
-  ${green}p(atch)${reset}       Apply patches onto all plugins
-  ${green}u(npatch)${reset}     Unpatch all plugins
+${ansi_h1}COMMANDS:${reset}
+  ${ansi_h2}sy(nc)${reset}        Sync and patch all plugins
+  ${ansi_h2}st(atus)${reset}      Show status
+  ${ansi_h2}c(lean)${reset}       Delete stray pacakges
+  ${ansi_h2}p(atch)${reset}       Apply patches onto all plugins
+  ${ansi_h2}u(npatch)${reset}     Unpatch all plugins
 
-${yellow}OPTIONS:${reset}
-    ${green}-j${reset}          Job count for syncing [default: $PLG_JOBS]
-    ${green}-s${reset}          Print output on single line
+${ansi_h1}OPTIONS:${reset}
+    ${ansi_h2}-j${reset}          Job count for syncing [default: $PLG_JOBS]
+    ${ansi_h2}-s${reset}          Print output on single line
 
-${yellow}ENVIRONMENT:${reset}
-  ${green}PLG_PLUGINS${reset}          Path to configuration file, should export PKGS=() and optionally PATCHES=()
-  ${green}PLG_PREFIX${reset}           Path to clone repositories into, needs to be on runtimepath
-  ${green}PLG_PATCHDIR${reset}         Path to patches
+${ansi_h1}ENVIRONMENT:${reset}
+  ${ansi_h2}PLG_PLUGINS${reset}          Path to configuration file, should export PKGS=() and optionally PATCHES=()
+  ${ansi_h2}PLG_PREFIX${reset}           Path to clone repositories into, needs to be on runtimepath
+  ${ansi_h2}PLG_PATCHDIR${reset}         Path to patches
 
 EOF
     exit 1
@@ -86,7 +86,7 @@ job_unpatch() {
 
     local output=$(gitcmd $repo checkout .)
     if [ "$output" != "Updated 0 paths from the index" ]; then
-        hdr "$name: \033[${G}m$output\033[0m"
+        hdr "$name: \033[${GREEN}m$output\033[0m"
     fi
 
     # Skip parser*/ directories for nvim-treesitter
@@ -101,7 +101,7 @@ job_unpatch() {
         -fdx)
 
     if [ -n "$output" ]; then
-        hdr "$name: \033[${G}m$output\033[0m"
+        hdr "$name: \033[${GREEN}m$output\033[0m"
     fi
 }
 
@@ -125,11 +125,11 @@ job_sync_repo() {
         if [ -z "$outstr" ]; then
             outstr=$(sed -n '1p' <<< "$output")
         fi
-        hdr "$remotepath: \033[${G}m$outstr\033[0m"
+        hdr "$remotepath: \033[${GREEN}m$outstr\033[0m"
     else
         local _=$(gitcmd $outdir clone -c advice.detachedHead=false --depth $PLG_CLONE_DEPTH "$url")
         local git_ref=$(gitcmd $outdir rev-parse --short HEAD)
-        hdr "$remotepath: \033[${G}mCloned $git_ref\033[0m"
+        hdr "$remotepath: \033[${GREEN}mCloned $git_ref\033[0m"
     fi
 }
 
@@ -164,7 +164,7 @@ plg_patch() {
     for p in ${PATCHES[@]}; do
         gitcmd $PLG_PREFIX/$p apply "$PLG_PATCHDIR/$(basename "$p").patch"
         local remotepath="$(tr ' ' '\n' <<< "${PKGS[*]}" | grep "$p$")"
-        hdr "$remotepath: \033[${G}mPatched successfully\033[0m"
+        hdr "$remotepath: \033[${GREEN}mPatched successfully\033[0m"
     done
 }
 
@@ -182,7 +182,7 @@ plg_status() {
         [ -z "$refname" ] &&
             local refname=$(git -C $repo symbolic-ref --short HEAD 2> /dev/null)
         [ -n "$refname" ] && refname="[$refname]"
-        printf "$pkg \033[${G}m$refname\033[0m\n" >&2
+        printf "$pkg \033[${GREEN}m$refname\033[0m\n" >&2
 
         git -c color.status=always -C "$repo" status -s
     done
@@ -211,8 +211,7 @@ PLG_PREFIX=${PLG_PREFIX:-"$HOME/.local/share/nvim/site/pack/plg/start"}
 PLG_CLONE_DEPTH=${PLG_CLONE_DEPTH:-1}
 PLG_JOBS=8
 SINGLE_LINE=false
-G=92
-Y=93
+GREEN=92
 
 # shellcheck disable=SC1090
 source "$PLG_PLUGINS"
