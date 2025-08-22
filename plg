@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-
-die() {
-    printf "$1\n" >&2
-    show_cursor
-    exit 1
-}
-
 hdr() {
     if $SINGLE_LINE; then
         # Clear line and overwrite
@@ -25,8 +18,8 @@ gitcmd() {
     local r=
 
     set +e
-    if [ "$subcmd" == clone ]; then
-        output=$(GIT_TERMINAL_PROMPT=0 git $subcmd ${@:3} "$repopath" 2>&1)
+    if [ "$subcmd" = clone ]; then
+        output=$(git $subcmd ${@:3} "$repopath" 2>&1)
         r=$?
     else
         output=$(git -C "$repopath" $subcmd ${@:3} 2>&1)
@@ -39,15 +32,15 @@ gitcmd() {
         hdr "${repopath##"$PLG_PREFIX/"}: \033[91m${subcmd^} failed\033[0m"
         $SINGLE_LINE && echo
         echo "$output"
-        show_cursor
-        exit $r
     else
         echo -n "$output"
     fi
+    return $r
 }
 
 hide_cursor() { printf '\033[?25l'; }
 
+# shellcheck disable=SC2329
 show_cursor() { printf '\x1b[?25h'; }
 
 usage() {
@@ -118,7 +111,11 @@ job_sync_repo() {
     local outdir="$PLG_PREFIX/$(basename $remotepath)"
 
     if [ -d "$outdir" ]; then
-        local output=$(gitcmd $outdir pull)
+        # The return value from the subshell is not caught if we define
+        # the variable with `local` on the same line...?
+        local output
+        output=$(gitcmd $outdir pull) || return $?
+
         # Print which commit we are updating to if applicable, otherwise
         # use the first line from the output.
         local outstr=$(grep -E '^Updating ' <<< "$output")
@@ -127,14 +124,16 @@ job_sync_repo() {
         fi
         hdr "$remotepath: \033[${GREEN}m$outstr\033[0m"
     else
-        local _=$(gitcmd $outdir clone -c advice.detachedHead=false --depth $PLG_CLONE_DEPTH "$url")
-        local git_ref=$(gitcmd $outdir rev-parse --short HEAD)
+        local git_ref
+        gitcmd $outdir clone -c advice.detachedHead=false --depth $PLG_CLONE_DEPTH "$url"
+        git_ref=$(gitcmd $outdir rev-parse --short HEAD) || return $?
         hdr "$remotepath: \033[${GREEN}mCloned $git_ref\033[0m"
     fi
 }
 
 plg_sync() {
     local i=0
+    local r=0
     local pids=()
     for pkg in ${PKGS[@]}; do
         job_sync_repo $pkg &
@@ -142,14 +141,16 @@ plg_sync() {
 
         # Clone PLG_JOBS repos at a time
         if [ $((i % PLG_JOBS)) = $((PLG_JOBS - 1)) ]; then
-            wait ${pids[@]}
+            for p in ${pids[@]}; do wait $p || r=$?; done
         fi
         i=$((i + 1))
     done
 
-    wait ${pids[@]}
+    for p in ${pids[@]}; do wait $p || r=$?; done
 
     plg_patch
+
+    RET=$r
 }
 
 plg_unpatch() {
@@ -212,11 +213,15 @@ PLG_CLONE_DEPTH=${PLG_CLONE_DEPTH:-1}
 PLG_JOBS=8
 SINGLE_LINE=false
 GREEN=92
+RET=0
+
+# Exit with error insteaf of showing "Username for '...'" dialog
+export GIT_TERMINAL_PROMPT=0
 
 # shellcheck disable=SC1090
 source "$PLG_PLUGINS"
 
-trap show_cursor INT
+trap show_cursor INT EXIT
 
 while getopts ":hj:s" opt; do
     case $opt in
@@ -236,16 +241,16 @@ sy*)
     plg_unpatch
     plg_sync
     $SINGLE_LINE && echo
-    show_cursor
 ;;
 u*)
     hide_cursor
     plg_unpatch
     $SINGLE_LINE && echo
-    show_cursor
 ;;
 st*) plg_status ;;
 p*) plg_patch ;;
 c*) plg_clean ;;
 *) usage ;;
 esac
+
+exit $RET
