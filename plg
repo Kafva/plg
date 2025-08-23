@@ -86,6 +86,7 @@ job_unpatch() {
     # Skip parser*/ directories for nvim-treesitter
     output=$(gitcmd $repo clean \
         --exclude=parser \
+        --exclude=doc/tags \
         --exclude=tsst.nvim \
         --exclude=.testenv \
         --exclude=debugger.lua \
@@ -149,6 +150,9 @@ plg_sync() {
     for p in ${pids[@]}; do wait $p || RET=$?; done
 
     plg_patch
+
+    # Update help tags
+    nvim -c "helptags ALL" -c quit --headless
 }
 
 plg_unpatch() {
