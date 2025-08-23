@@ -71,13 +71,14 @@ EOF
 }
 
 job_unpatch() {
+    local output
     local name="$1"
     local repo="$PLG_PREFIX/$(basename $name)"
     if [ ! -d "$repo" ]; then
         return
     fi
 
-    local output=$(gitcmd $repo checkout .)
+    output=$(gitcmd $repo checkout .) || return $?
     if [ "$output" != "Updated 0 paths from the index" ]; then
         hdr "$name: \033[${GREEN}m$output\033[0m"
     fi
@@ -91,7 +92,7 @@ job_unpatch() {
         --exclude=parser-info \
         --exclude=.tags \
         --exclude=.luarc.json \
-        -fdx)
+        -fdx) || return $?
 
     if [ -n "$output" ]; then
         hdr "$name: \033[${GREEN}m$output\033[0m"
@@ -133,7 +134,6 @@ job_sync_repo() {
 
 plg_sync() {
     local i=0
-    local r=0
     local pids=()
     for pkg in ${PKGS[@]}; do
         job_sync_repo $pkg &
@@ -141,21 +141,19 @@ plg_sync() {
 
         # Clone PLG_JOBS repos at a time
         if [ $((i % PLG_JOBS)) = $((PLG_JOBS - 1)) ]; then
-            for p in ${pids[@]}; do wait $p || r=$?; done
+            for p in ${pids[@]}; do wait $p || RET=$?; done
         fi
         i=$((i + 1))
     done
 
-    for p in ${pids[@]}; do wait $p || r=$?; done
+    for p in ${pids[@]}; do wait $p || RET=$?; done
 
     plg_patch
-
-    RET=$r
 }
 
 plg_unpatch() {
     for pkg in ${PKGS[@]}; do
-        job_unpatch $pkg
+        job_unpatch $pkg || RET=$?
     done
 }
 
@@ -241,6 +239,7 @@ sy*)
     plg_unpatch
     plg_sync
     $SINGLE_LINE && echo
+    plg_clean
 ;;
 u*)
     hide_cursor
