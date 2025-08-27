@@ -152,7 +152,10 @@ plg_sync() {
     plg_patch
 
     # Update help tags
-    nvim -c "helptags ALL" -c quit --headless
+    nvim \
+        --headless \
+        -c 'lua ok, _ = pcall(vim.cmd.helptags, "ALL")
+            if ok then vim.cmd.quit() else vim.cmd.cquit() end'
 }
 
 plg_unpatch() {
